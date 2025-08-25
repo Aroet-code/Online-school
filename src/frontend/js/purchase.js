@@ -1,7 +1,6 @@
 // purchase.js - Обработчик страницы покупки курса
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Получаем ID курса из URL параметров
     const urlParams = new URLSearchParams(window.location.search);
     const courseId = urlParams.get('course_id');
     
@@ -11,17 +10,15 @@ document.addEventListener('DOMContentLoaded', function() {
         showError('Не указан ID курса');
     }
     
-    // Обработчик формы покупки
     document.getElementById('purchaseForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         await processPurchase(courseId);
     });
 });
 
-// Загрузка информации о курсе
 async function loadCourseInfo(courseId) {
     try {
-        const response = await fetch('/api/courses');
+        const response = await fetch('http://localhost:8080/api/courses');
         const courses = await response.json();
         
         const course = courses.find(c => c.id == courseId);
@@ -36,7 +33,6 @@ async function loadCourseInfo(courseId) {
     }
 }
 
-// Отображение информации о курсе
 function displayCourseInfo(course) {
     const purchaseInfo = document.getElementById('purchaseInfo');
     
@@ -45,63 +41,44 @@ function displayCourseInfo(course) {
             <h3>${course.title}</h3>
             <div class="course-details">
                 <p><strong>Язык:</strong> ${course.language.toUpperCase()}</p>
-                <p><strong>Уровень:</strong> ${course.level}</p>
-                <p><strong>Длительность:</strong> ${course.duration_days} дней</p>
-                <p class="course-price"><strong>Цена:</strong> ${course.price} руб.</p>
+                <p><strong>Цена:</strong> ${course.price} руб.</p>
             </div>
         </div>
     `;
 }
 
-// Обработка покупки
 async function processPurchase(courseId) {
     const email = document.getElementById('email').value;
     
     if (!email) {
-        showError('Пожалуйста, введите email');
+        showError('Пожалуйста, введите email для отправки чека');
         return;
     }
     
     try {
         showMessage('🔄 Обрабатываем покупку...', 'info');
         
-        // Сначала получаем информацию о пользователе
-        const userResponse = await fetch('/api/user', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email: email })
-        });
-        
-        if (!userResponse.ok) {
-            const errorData = await userResponse.json();
-            throw new Error(errorData.error || 'Пользователь не найден');
-        }
-        
-        const userData = await userResponse.json();
-        
-        // Затем совершаем покупку
-        const purchaseResponse = await fetch('/api/purchase', {
+        // Совершаем покупку
+        const purchaseResponse = await fetch('http://localhost:8080/api/purchase', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                user_id: userData.id,
-                course_id: courseId
+                email: email,
+                course_id: parseInt(courseId)
             })
         });
         
         const result = await purchaseResponse.json();
         
         if (purchaseResponse.ok) {
-            showMessage('✅ Покупка успешно завершена!', 'success');
+            showMessage('✅ ' + result.message + 
+                       '\n💰 Новый баланс: ' + result.user.wallet + ' руб.', 'success');
             
-            // Перенаправляем на главную страницу через 2 секунды
             setTimeout(() => {
                 window.location.href = 'index.html';
-            }, 2000);
+            }, 3000);
         } else {
             throw new Error(result.error || 'Ошибка при покупке');
         }
@@ -112,7 +89,6 @@ async function processPurchase(courseId) {
     }
 }
 
-// Показать сообщение
 function showMessage(text, type) {
     const messageDiv = document.getElementById('message');
     messageDiv.textContent = text;
@@ -120,12 +96,6 @@ function showMessage(text, type) {
     messageDiv.style.display = 'block';
 }
 
-// Показать ошибку
 function showError(text) {
     showMessage('❌ ' + text, 'error');
-}
-
-// Показать информационное сообщение
-function showInfo(text) {
-    showMessage('ℹ️ ' + text, 'info');
 }

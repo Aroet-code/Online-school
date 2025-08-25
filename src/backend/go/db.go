@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -40,11 +39,38 @@ type Purchase struct {
 	Status         string    `gorm:"default:'active';size:20"`
 }
 
-func getDBPath() string {
-	currentDir, _ := os.Getwd()
-	dataDir := filepath.Join(currentDir, "..", "..", "data")
-	os.MkdirAll(dataDir, 0755)
-	return filepath.Join(dataDir, "school.db")
+// Функция для получения DSN (Data Source Name)
+func getDSN() string {
+	// Получаем параметры подключения из переменных окружения
+	// или используем значения по умолчанию
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		dbUser = "root"
+	}
+
+	dbPassword := os.Getenv("DB_PASSWORD")
+	if dbPassword == "" {
+		dbPassword = "password"
+	}
+
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "localhost"
+	}
+
+	dbPort := os.Getenv("DB_PORT")
+	if dbPort == "" {
+		dbPort = "3306"
+	}
+
+	dbName := os.Getenv("DB_NAME")
+	if dbName == "" {
+		dbName = "school_system"
+	}
+
+	// Формат: user:password@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True&loc=Local
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		dbUser, dbPassword, dbHost, dbPort, dbName)
 }
 
 func HashPassword(password string) (string, error) {
@@ -58,11 +84,11 @@ func CheckPasswordHash(password, hash string) bool {
 }
 
 func InitDatabase() {
-	dbPath := getDBPath()
-	fmt.Printf("📊 База данных: %s\n", dbPath)
+	dsn := getDSN()
+	fmt.Printf("📊 Подключение к MySQL: %s\n", dsn)
 
 	var err error
-	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
 		PrepareStmt: true,
 	})
 	if err != nil {
@@ -74,16 +100,24 @@ func InitDatabase() {
 		log.Fatal("❌ Ошибка получения DB объекта:", err)
 	}
 
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	// Настройки пула соединений для MySQL
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatal("❌ Ошибка ping базы данных:", err)
 	}
 
-	fmt.Println("✅ Соединение с базой данных установлено")
+	fmt.Println("✅ Соединение с MySQL установлено")
 
+	// Создаем базу данных если она не существует
+	err = DB.Exec("CREATE DATABASE IF NOT EXISTS school_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci").Error
+	if err != nil {
+		log.Fatal("❌ Ошибка создания базы данных:", err)
+	}
+
+	// Миграция таблиц
 	err = DB.AutoMigrate(&User{}, &Course{}, &Purchase{})
 	if err != nil {
 		log.Fatal("❌ Ошибка миграции:", err)
@@ -139,6 +173,7 @@ func createAdminUser() {
 	}
 }
 
+// Остальные функции остаются без изменений...
 func GetAllCourses() ([]Course, error) {
 	var courses []Course
 	result := DB.Find(&courses)
@@ -223,5 +258,13 @@ func CreatePurchase(userID, courseID uint, amount float64) (*Purchase, error) {
 }
 
 func CheckTables() error {
+	// Проверяем существование таблиц
+	tables := []string{"users", "courses", "purchases"}
+	for _, table := range tables {
+		result := DB.Exec("SELECT 1 FROM " + table + " LIMIT 1")
+		if result.Error != nil {
+			return fmt.Errorf("таблица %s не существует или недоступна", table)
+		}
+	}
 	return nil
 }
