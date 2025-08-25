@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type RegisterRequest struct {
@@ -51,32 +52,40 @@ func enableCORS(next http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+
 		next(w, r)
 	}
 }
 
 func mainHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/health" {
-			healthHandler(w, r)
-			return
-		}
-		if r.URL.Path == "/api/courses" && r.Method == "GET" {
-			coursesHandler(w, r)
-			return
-		}
-		if r.URL.Path == "/api/register" && r.Method == "POST" {
-			registerHandler(w, r)
-			return
-		}
-		if r.URL.Path == "/api/login" && r.Method == "POST" {
-			loginHandler(w, r)
+		path := r.URL.Path
+
+		if strings.HasPrefix(path, "/api/") {
+			handleAPI(w, r)
 			return
 		}
 
 		frontendPath := getFrontendPath()
 		http.FileServer(http.Dir(frontendPath)).ServeHTTP(w, r)
 	})(w, r)
+}
+
+func handleAPI(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+
+	switch {
+	case path == "/api/register" && r.Method == "POST":
+		registerHandler(w, r)
+	case path == "/api/login" && r.Method == "POST":
+		loginHandler(w, r)
+	case path == "/api/courses" && r.Method == "GET":
+		coursesHandler(w, r)
+	case path == "/api/health" && r.Method == "GET":
+		healthHandler(w, r)
+	default:
+		sendErrorResponse(w, "Endpoint not found", http.StatusNotFound)
+	}
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +136,9 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		"user_id":  user.ID,
 		"username": user.Username,
 		"email":    user.Email,
+		"wallet":   user.WalletBalance,
 	}
+
 	sendJSONResponse(w, response)
 }
 
@@ -154,6 +165,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			"wallet":   user.WalletBalance,
 		},
 	}
+
 	sendJSONResponse(w, response)
 }
 

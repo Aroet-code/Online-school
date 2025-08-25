@@ -3,6 +3,7 @@ module school-system
 go 1.24.6
 
 require (
+	golang.org/x/crypto v0.41.0
 	gorm.io/driver/sqlite v1.5.5
 	gorm.io/gorm v1.25.10
 )
